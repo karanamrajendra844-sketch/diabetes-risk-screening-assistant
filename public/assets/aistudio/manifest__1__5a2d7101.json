@@ -1,0 +1,32 @@
+{
+  "background_color": "#000000",
+  "description": "Mobile-first preliminary diabetes risk screening assistant powered by machine learning, privacy-first encrypted storage, and educational health guidance.",
+  "dir": "ltr",
+  "display": "standalone",
+  "name": "Dia Care",
+  "orientation": "portrait",
+  "scope": "/",
+  "short_name": "Dia Care",
+  "start_url": "/",
+  "theme_color": "#000000",
+  "icons": [
+    {
+      "src": "https://diabetes-risk-screening-assistant-411699544731.asia-southeast1.run.app/favicon.ico",
+      "type": "image/x-icon",
+      "isSquare": false,
+      "isPng": false,
+      "isWebp": false,
+      "isJpg": false,
+      "width": 0,
+      "is512x512": false,
+      "is256x256": false,
+      "is192x192": false
+    }
+  ],
+  "id": "com.diabetesrisk.screeningassistant",
+  "categories": [
+    "health",
+    "medical"
+  ],
+  "lang": "en"
+}

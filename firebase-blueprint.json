@@ -1,0 +1,184 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Non-PII preferences, consent status, and screening settings for an authenticated user.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "displayName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "saveHistoryConsent": {
+          "type": "boolean"
+        },
+        "preferredModel": {
+          "type": "string",
+          "enum": ["logistic_regression", "random_forest"]
+        },
+        "theme": {
+          "type": "string",
+          "enum": ["light", "dark"]
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["uid", "displayName", "saveHistoryConsent", "preferredModel", "theme", "createdAt", "updatedAt"]
+    },
+    "UserPrivateInfo": {
+      "title": "UserPrivateInfo",
+      "description": "Isolated PII document containing user email or phone number and auth provider metadata.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "email": {
+          "type": "string",
+          "maxLength": 160
+        },
+        "phoneNumber": {
+          "type": "string",
+          "maxLength": 32
+        },
+        "authProvider": {
+          "type": "string",
+          "enum": ["phone", "google.com", "password"]
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["uid", "email", "phoneNumber", "authProvider", "updatedAt"]
+    },
+    "ScreeningRecord": {
+      "title": "ScreeningRecord",
+      "description": "Consented preliminary diabetes risk screening record with 4 health inputs and ML model output.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "age": {
+          "type": "number"
+        },
+        "glucose": {
+          "type": "number"
+        },
+        "bmi": {
+          "type": "number"
+        },
+        "bloodPressure": {
+          "type": "number"
+        },
+        "modelName": {
+          "type": "string",
+          "enum": ["Logistic Regression", "Random Forest Classifier"]
+        },
+        "modelMode": {
+          "type": "string",
+          "enum": ["validated_sklearn", "demonstration"]
+        },
+        "riskCategory": {
+          "type": "string",
+          "enum": ["Lower estimated risk", "Elevated estimated risk", "Higher estimated risk"]
+        },
+        "isCalibrated": {
+          "type": "boolean"
+        },
+        "calibratedProbability": {
+          "type": "number"
+        },
+        "glucoseContribution": {
+          "type": "number"
+        },
+        "bmiContribution": {
+          "type": "number"
+        },
+        "ageContribution": {
+          "type": "number"
+        },
+        "bpContribution": {
+          "type": "number"
+        },
+        "topFactors": {
+          "type": "array"
+        },
+        "explanation": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        },
+        "recommendation": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "uid",
+        "age",
+        "glucose",
+        "bmi",
+        "bloodPressure",
+        "modelName",
+        "modelMode",
+        "riskCategory",
+        "isCalibrated",
+        "glucoseContribution",
+        "bmiContribution",
+        "ageContribution",
+        "bpContribution",
+        "topFactors",
+        "explanation",
+        "recommendation",
+        "createdAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "User preference and consent profile isolated from PII."
+    },
+    "/users/{userId}/private/info": {
+      "schema": { "$ref": "#/entities/UserPrivateInfo" },
+      "description": "Strictly owner-only PII subdocument holding email and phone number."
+    },
+    "/users/{userId}/screenings/{screeningId}": {
+      "schema": { "$ref": "#/entities/ScreeningRecord" },
+      "description": "Consented diabetes screening records owned by the user."
+    }
+  }
+}

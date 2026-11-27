@@ -1,0 +1,172 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Default-deny catch-all safety net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Reusable Hardened Primitives ---
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // Require verified identity via verified email (Google / Email) or verified Phone OTP
+    function isVerifiedUser() {
+      return isSignedIn() && (
+        request.auth.token.email_verified == true ||
+        (request.auth.token.phone_number is string && request.auth.token.phone_number.size() > 0)
+      );
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    // --- Validation Blueprints ---
+    function isValidUserProfile(data, userId) {
+      return data.keys().hasAll([
+          'uid', 'displayName', 'saveHistoryConsent', 'preferredModel', 'theme', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'uid', 'displayName', 'saveHistoryConsent', 'preferredModel', 'theme', 'createdAt', 'updatedAt'
+        ]) &&
+        data.uid is string && isValidId(data.uid) && data.uid == userId && data.uid == request.auth.uid &&
+        data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 80 &&
+        data.saveHistoryConsent is bool &&
+        data.preferredModel in ['logistic_regression', 'random_forest'] &&
+        data.theme in ['light', 'dark'] &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidPrivateInfo(data, userId) {
+      return data.keys().hasAll(['uid', 'email', 'phoneNumber', 'authProvider', 'updatedAt']) &&
+        data.keys().hasOnly(['uid', 'email', 'phoneNumber', 'authProvider', 'updatedAt']) &&
+        data.uid is string && isValidId(data.uid) && data.uid == userId && data.uid == request.auth.uid &&
+        data.email is string && data.email.size() <= 160 &&
+        data.phoneNumber is string && data.phoneNumber.size() <= 32 &&
+        data.authProvider in ['phone', 'google.com', 'password'] &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidScreeningRecord(data, userId, screeningId) {
+      return data.keys().hasAll([
+          'id', 'uid', 'age', 'glucose', 'bmi', 'bloodPressure',
+          'modelName', 'modelMode', 'riskCategory', 'isCalibrated',
+          'glucoseContribution', 'bmiContribution', 'ageContribution', 'bpContribution',
+          'topFactors', 'explanation', 'recommendation', 'createdAt'
+        ]) &&
+        data.keys().hasOnly([
+          'id', 'uid', 'age', 'glucose', 'bmi', 'bloodPressure',
+          'modelName', 'modelMode', 'riskCategory', 'isCalibrated', 'calibratedProbability',
+          'glucoseContribution', 'bmiContribution', 'ageContribution', 'bpContribution',
+          'topFactors', 'explanation', 'recommendation', 'createdAt'
+        ]) &&
+        data.id is string && isValidId(data.id) && data.id == screeningId &&
+        data.uid is string && isValidId(data.uid) && data.uid == userId && data.uid == request.auth.uid &&
+        data.age is number && data.age >= 18 && data.age <= 120 &&
+        data.glucose is number && data.glucose >= 40 && data.glucose <= 600 &&
+        data.bmi is number && data.bmi >= 10 && data.bmi <= 80 &&
+        data.bloodPressure is number && data.bloodPressure >= 40 && data.bloodPressure <= 250 &&
+        data.modelName in ['Logistic Regression', 'Random Forest Classifier'] &&
+        data.modelMode in ['validated_sklearn', 'demonstration'] &&
+        data.riskCategory in ['Lower estimated risk', 'Elevated estimated risk', 'Higher estimated risk'] &&
+        data.isCalibrated is bool &&
+        (!('calibratedProbability' in data) || (data.calibratedProbability is number && data.calibratedProbability >= 0 && data.calibratedProbability <= 1)) &&
+        data.glucoseContribution is number &&
+        data.bmiContribution is number &&
+        data.ageContribution is number &&
+        data.bpContribution is number &&
+        data.topFactors is list && data.topFactors.size() >= 1 && data.topFactors.size() <= 4 &&
+        data.topFactors[0] is string && data.topFactors[0].size() <= 120 &&
+        data.explanation is string && data.explanation.size() >= 1 && data.explanation.size() <= 1000 &&
+        data.recommendation is string && data.recommendation.size() >= 1 && data.recommendation.size() <= 1000 &&
+        data.createdAt is timestamp;
+    }
+
+    // --- Collection Rules ---
+    match /users/{userId} {
+      allow get: if isVerifiedUser() && isValidId(userId) && isOwner(userId);
+      allow list: if false;
+
+      allow create: if isVerifiedUser() &&
+        isValidId(userId) &&
+        isOwner(userId) &&
+        isValidUserProfile(incoming(), userId) &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+
+      allow update: if isVerifiedUser() &&
+        isValidId(userId) &&
+        isOwner(userId) &&
+        isValidUserProfile(incoming(), userId) &&
+        incoming().uid == existing().uid &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time && (
+          incoming().diff(existing()).affectedKeys().hasOnly(['saveHistoryConsent', 'updatedAt']) ||
+          incoming().diff(existing()).affectedKeys().hasOnly(['preferredModel', 'updatedAt']) ||
+          incoming().diff(existing()).affectedKeys().hasOnly(['theme', 'updatedAt']) ||
+          incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'updatedAt'])
+        );
+
+      allow delete: if isVerifiedUser() && isValidId(userId) && isOwner(userId);
+
+      // Isolated PII subcollection
+      match /private/{docId} {
+        allow get: if isVerifiedUser() && isValidId(userId) && docId == 'info' && isOwner(userId);
+        allow list: if false;
+
+        allow create: if isVerifiedUser() &&
+          isValidId(userId) &&
+          docId == 'info' &&
+          isOwner(userId) &&
+          isValidPrivateInfo(incoming(), userId) &&
+          incoming().updatedAt == request.time;
+
+        allow update: if isVerifiedUser() &&
+          isValidId(userId) &&
+          docId == 'info' &&
+          isOwner(userId) &&
+          isValidPrivateInfo(incoming(), userId) &&
+          incoming().uid == existing().uid &&
+          incoming().updatedAt == request.time &&
+          incoming().diff(existing()).affectedKeys().hasOnly(['email', 'phoneNumber', 'authProvider', 'updatedAt']);
+
+        allow delete: if isVerifiedUser() && isValidId(userId) && docId == 'info' && isOwner(userId);
+      }
+
+      // Consented screening history subcollection
+      match /screenings/{screeningId} {
+        allow get: if isVerifiedUser() && isValidId(userId) && isValidId(screeningId) && isOwner(userId);
+        allow list: if isVerifiedUser() && isValidId(userId) && isOwner(userId) && existing().uid == request.auth.uid;
+
+        allow create: if isVerifiedUser() &&
+          isValidId(userId) &&
+          isValidId(screeningId) &&
+          isOwner(userId) &&
+          isValidScreeningRecord(incoming(), userId, screeningId) &&
+          incoming().createdAt == request.time &&
+          exists(/databases/$(database)/documents/users/$(userId)) &&
+          get(/databases/$(database)/documents/users/$(userId)).data.saveHistoryConsent == true;
+
+        allow update: if false;
+
+        allow delete: if isVerifiedUser() && isValidId(userId) && isValidId(screeningId) && isOwner(userId);
+      }
+    }
+  }
+}
